@@ -1,6 +1,8 @@
 //! The internals of header representation. That is: `Item`.
 
 use std::any::AnyRefExt;
+use std::slice;
+use std::fmt;
 
 use super::{Header, UncheckedAnyMutRefExt, fmt_header};
 
@@ -227,6 +229,20 @@ impl Item {
         self.raw_valid = false;
         self.typed = Some(box value as Box<Header + 'static>);
     }
+
+    /// Produce an object that will iterate over objects satisfying `fmt::Show` for each value of
+    /// the header.
+    pub fn formatter(&self) -> ItemFormatter {
+        match *self {
+            Item { raw_valid: true, raw: Some(ref lines), .. } => {
+                ItemFormatter::Raw(lines[].iter())
+            },
+            Item { typed: Some(ref header), .. } => {
+                ItemFormatter::Typed(Some(&**header))
+            },
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -235,6 +251,44 @@ impl Item {
         assert!(self.raw.is_some() || !self.raw_valid);
         assert!(self.raw.is_some() || self.typed.is_some());
         assert!(!self.raw_valid || self.raw.as_ref().unwrap().len() > 0);
+    }
+}
+
+/// The result of `Item.formatter()`.
+///
+/// Iteration is the only useful thing that can be done on this. It will normally yield one element
+/// only, but may yield more than one.
+pub enum ItemFormatter<'a> {
+    Raw(slice::Items<'a, Vec<u8>>),
+    Typed(Option<&'a Header + 'static>),
+}
+
+/// The result of iteration over `ItemFormatter`.
+///
+/// This is fit only for invoking `fmt::Show` on.
+pub enum LineFormatter<'a> {
+    Raw(&'a [u8]),
+    Typed(&'a Header + 'static),
+}
+
+impl<'a> Iterator<LineFormatter<'a>> for ItemFormatter<'a> {
+    fn next(&mut self) -> Option<LineFormatter<'a>> {
+        match *self {
+            ItemFormatter::Raw(ref mut iter) => iter.next().map(|v| LineFormatter::Raw(v[])),
+            ItemFormatter::Typed(ref mut header) => header.take().map(|h| LineFormatter::Typed(h)),
+        }
+    }
+}
+
+impl<'a> fmt::Show for LineFormatter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            LineFormatter::Raw(slice) => f.write(slice),
+            LineFormatter::Typed(header) => match header.fmt_header(f) {
+                Ok(ok) => Ok(ok),
+                Err(_) => Err(fmt::WriteError),
+            },
+        }
     }
 }
 

@@ -5,10 +5,11 @@ use std::mem::{transmute, transmute_copy};
 use std::intrinsics::TypeId;
 use std::fmt;
 use std::io::{MemWriter, IoResult};
+use std::iter;
 use std::raw::TraitObject;
 use std::str::SendStr;
 
-use std::collections::hash_map::{HashMap, Occupied, Vacant};
+use std::collections::hash_map::{mod, HashMap, Occupied, Vacant};
 
 use self::internals::Item;
 
@@ -289,6 +290,35 @@ pub struct Headers {
     data: HashMap<SendStr, Item>,
 }
 
+impl fmt::Show for Headers {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (name, values) in self.data.iter() {
+            for value in values.formatter() {
+                try!(write!(f, "{}: {}\n", name, value));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Turn self into a vector of elements as cheaply as possible.
+pub trait IntoVector<T> {
+    /// Consuming self, produce a `Vec<T>`.
+    fn into_vec(self) -> Vec<T>;
+}
+
+impl<T> IntoVector<T> for Vec<T> {
+    fn into_vec(self) -> Vec<T> {
+        self
+    }
+}
+
+impl<'a, T: Clone> IntoVector<T> for &'a [T] {
+    fn into_vec(self) -> Vec<T> {
+        self.iter().map(|x| x.clone()).collect()
+    }
+}
+
 impl Headers {
     /// Construct a new header collection.
     pub fn new() -> Headers {
@@ -296,7 +326,28 @@ impl Headers {
             data: HashMap::new(),
         }
     }
+
+    /// Iterates over `(&SendStr, &[Vec<u8>])` pairs.
+    pub fn iter_raw(&mut self) -> iter::Map<(&SendStr, &mut Item),
+                                            (&SendStr, &[Vec<u8>]),
+                                            hash_map::MutEntries<SendStr, Item>> {
+        self.data.iter_mut().map(|(name, item)| (name, item.raw_ref()))
+    }
+
+    /// Insert a raw header field pair into the header set.
+    ///
+    /// This is largely just a convenience for HTTP message parsing.
+    pub fn insert_raw_line<Name: IntoMaybeOwned<'static>,
+                           Value: IntoVector<u8>>
+                          (&mut self, name: Name, value: Value) {
+        let value = value.into_vec();
+        match self.data.entry(name.into_maybe_owned()) {
+            Vacant(entry) => { let _ = entry.set(Item::from_raw(vec![value])); },
+            Occupied(entry) => entry.into_mut().raw_mut_ref().push(value),
+        }
+    }
 }
+
 
 impl<H: Header + Clone + 'static, M: HeaderMarker<H>> Headers {
 

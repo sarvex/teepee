@@ -25,3 +25,7 @@ git = "https://github.com/sfackler/rust-phf.git"
 
 [dependencies.phf_mac]
 git = "https://github.com/sfackler/rust-phf.git"
+
+[dependencies.phantom-enum]
+git = "https://github.com/chris-morgan/phantom-enum.git"
+#path = "../../phantom-enum"

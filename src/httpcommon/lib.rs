@@ -20,11 +20,21 @@
 #![warn(non_upper_case_globals, unused_typecasts, missing_docs, unused_results)]
 //#![warn(unstable)]
 
+extern crate graphviz;
+
 #[phase(plugin)]
 extern crate phf_mac;
 extern crate phf;
+
+#[phase(plugin)]
+extern crate phantom_enum;
 
 pub mod method;
 pub mod status;
 pub mod headers;
 pub mod grammar;
+pub mod http1;
+pub mod httpt;
+
+#[cfg(test)]
+pub mod test_utils;
